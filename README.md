@@ -160,11 +160,9 @@ sudo systemctl reload nginx
 
 仓库包含 [`.github/workflows/pages.yml`](.github/workflows/pages.yml)，推送到 `main` 分支后可自动发布静态文件。
 
-1. 打开 GitHub 仓库的 `Settings`。
-2. 进入 `Pages`。
-3. 将 `Source` 设置为 `GitHub Actions`。
-4. 打开 `Actions`，运行或等待 `Deploy to GitHub Pages` 工作流。
-5. 部署完成后访问：
+推送到 `main` 后，工作流会尝试自动启用并部署 GitHub Pages。如果仓库策略不允许工作流自动启用，请打开仓库 `Settings > Pages`，将 `Source` 设置为 `GitHub Actions`，然后重新运行工作流。
+
+部署完成后访问：
 
 ```text
 https://zfg5118.github.io/DeepImage2-Video/
@@ -400,10 +398,9 @@ Always enable HTTPS for production deployments.
 
 The repository includes [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
 
-1. Open repository `Settings` and select `Pages`.
-2. Set `Source` to `GitHub Actions`.
-3. Run or wait for the `Deploy to GitHub Pages` workflow.
-4. Open:
+After a push to `main`, the workflow attempts to enable and deploy GitHub Pages automatically. If repository policy blocks automatic enablement, open `Settings > Pages`, set `Source` to `GitHub Actions`, and rerun the workflow.
+
+Open:
 
 ```text
 https://zfg5118.github.io/DeepImage2-Video/
