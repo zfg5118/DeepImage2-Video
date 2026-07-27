@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f8f8f9" />
+    <title>DeepImage2-Video</title>
+    <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
+    <link rel="stylesheet" href="./styles.css?v=20260727-40" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <button id="collapseSidebar" class="icon-button desktop-only" type="button" title="收起侧边栏" aria-label="收起侧边栏">☰</button>
+          <button id="newSession" class="primary-action" type="button">新建视觉会话</button>
+        </div>
+
+        <div class="mode-switch" role="tablist" aria-label="工作模式">
+          <button id="imageMode" class="mode-button active" type="button" role="tab" aria-selected="true">视觉创作</button>
+          <button id="chatMode" class="mode-button" type="button" role="tab" aria-selected="false">语言模型</button>
+        </div>
+
+        <div class="search-wrap">
+          <input id="sessionSearch" class="search-input" type="search" placeholder="搜索视觉创作" autocomplete="off" />
+        </div>
+
+        <nav id="sessionList" class="session-list" aria-label="会话列表"></nav>
+
+        <div class="sidebar-footer">
+          <button id="openSettingsSide" class="plain-row" type="button">
+            <span class="avatar">AI</span>
+            <span class="plain-row-text">设置</span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="title-line">
+            <button id="mobileMenu" class="icon-button mobile-only" type="button" title="打开侧边栏" aria-label="打开侧边栏">☰</button>
+            <div class="title-block">
+              <h1 id="workspaceTitle">DeepImage2-Video</h1>
+              <span id="modelBadge" class="model-badge">未选择模型</span>
+            </div>
+          </div>
+          <div class="top-actions">
+            <button id="openHistory" class="tool-button mobile-only" type="button">会话</button>
+            <button id="testModels" class="tool-button" type="button">模型</button>
+            <button id="openSettings" class="accent-button settings-trigger" type="button">
+              <span aria-hidden="true">⚙</span>
+              <span>设置</span>
+            </button>
+          </div>
+        </header>
+
+        <section id="chatPanel" class="content-panel" aria-label="语言模型">
+          <div id="emptyChat" class="empty-state">
+            <div class="empty-icon">✦</div>
+            <h2>开始一次创作</h2>
+            <p>选择模型后输入内容。</p>
+          </div>
+          <div id="messages" class="messages" aria-live="polite"></div>
+        </section>
+
+        <section id="imagePanel" class="content-panel active" aria-label="视觉创作">
+          <div class="visual-shell">
+            <div class="visual-main">
+              <div class="visual-tabs" role="tablist" aria-label="视觉类型">
+                <button id="visualImageTab" class="visual-tab active" type="button" role="tab" aria-selected="true">图片生成</button>
+                <button id="visualVideoTab" class="visual-tab" type="button" role="tab" aria-selected="false">视频生成</button>
+              </div>
+
+              <div class="visual-head">
+                <div>
+                  <h2 id="visualPanelTitle">图片生成</h2>
+                  <p id="visualPanelSubtitle">支持文生图、图生图、参考图和模型专属参数。</p>
+                </div>
+                <div class="visual-head-actions">
+                  <span id="visualRequestHint" class="hint-pill">OpenAI 兼容</span>
+                  <button id="clearImages" class="mini-button" type="button">清空会话</button>
+                </div>
+              </div>
+
+              <div id="visualCanvas" class="visual-canvas">
+                <div id="imageEmpty" class="empty-state compact">
+                  <div class="empty-icon">◎</div>
+                  <h2>创建视觉内容</h2>
+                  <p id="visualEmptyText">输入画面描述，或上传参考图进行图生图。</p>
+                </div>
+                <div id="imageGrid" class="visual-grid"></div>
+              </div>
+            </div>
+
+            <aside class="visual-inspector">
+              <section class="inspector-panel">
+                <div class="section-heading">
+                  <span>当前模型</span>
+                  <button id="openModelSettings" class="mini-button" type="button">切换</button>
+                </div>
+                <div id="modelSummary" class="model-summary"></div>
+              </section>
+
+              <section class="inspector-panel">
+                <div class="section-heading">
+                  <span>任务记录</span>
+                  <span id="taskCount" class="soft-count">0</span>
+                </div>
+                <div id="imageHistory" class="history-list"></div>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <form id="composer" class="composer" autocomplete="off">
+          <div class="composer-card">
+            <div id="chatToolbar" class="chat-toolbar" hidden>
+              <button id="uploadChatFileButton" class="chip tool-chip" type="button" title="上传文件">＋ 文件</button>
+              <button id="chatWebToggle" class="chip tool-chip" type="button" aria-pressed="false" title="联网搜索">◎ 联网</button>
+            </div>
+            <div id="chatAttachmentTray" class="draft-media-tray" hidden></div>
+            <div id="visualToolbar" class="visual-toolbar">
+              <div class="segmented mini-segmented" aria-label="生成类型">
+                <button class="segment-button active" type="button" data-visual-mode="image">图片</button>
+                <button class="segment-button" type="button" data-visual-mode="video">视频</button>
+              </div>
+              <button id="visualContextToggle" class="chip tool-chip active" type="button" aria-pressed="true">上下文</button>
+              <button id="uploadImageRefButton" class="chip tool-chip" type="button">参考图</button>
+              <button id="uploadFirstFrameButton" class="chip tool-chip video-tool" type="button">首帧</button>
+              <button id="uploadLastFrameButton" class="chip tool-chip video-tool" type="button">尾帧</button>
+              <button id="uploadVideoRefButton" class="chip tool-chip video-tool" type="button">参考视频</button>
+              <button id="uploadAudioButton" class="chip tool-chip video-tool" type="button">音频</button>
+              <button id="openOutputSettings" class="chip tool-chip" type="button" aria-expanded="false">参数</button>
+            </div>
+
+            <div id="draftMediaTray" class="draft-media-tray" hidden></div>
+
+            <div id="outputSettingsPopover" class="output-popover" hidden>
+              <div id="imageOutputSettings" class="output-settings">
+                <div class="setting-row">
+                  <span>比例</span>
+                  <div id="imageAspectGroup" class="option-grid compact-options"></div>
+                </div>
+                <div class="setting-row">
+                  <span>尺寸</span>
+                  <div id="imageSizeGroup" class="option-grid"></div>
+                </div>
+                <div class="setting-row">
+                  <span>质量</span>
+                  <div id="imageQualityGroup" class="option-grid"></div>
+                </div>
+                <div class="setting-row">
+                  <span>风格</span>
+                  <div id="imageStyleGroup" class="option-grid"></div>
+                </div>
+                <label class="inline-field">
+                  <span>数量</span>
+                  <input id="imageCountInline" type="number" min="1" max="4" step="1" />
+                </label>
+              </div>
+
+              <div id="videoOutputSettings" class="output-settings" hidden>
+                <div class="setting-row">
+                  <span>比例</span>
+                  <div id="videoAspectGroup" class="option-grid compact-options"></div>
+                </div>
+                <div class="setting-row">
+                  <span>清晰度</span>
+                  <div id="videoResolutionGroup" class="option-grid"></div>
+                </div>
+                <div class="setting-row">
+                  <span>时长</span>
+                  <div id="videoDurationGroup" class="option-grid"></div>
+                </div>
+                <div class="setting-row">
+                  <span>风格</span>
+                  <div id="videoStyleGroup" class="option-grid"></div>
+                </div>
+                <label class="toggle-row">
+                  <span>生成音频</span>
+                  <input id="videoAudioToggle" type="checkbox" />
+                </label>
+              </div>
+            </div>
+
+            <textarea id="promptInput" rows="1" placeholder="描述要生成的画面；上传参考图可进行图生图" aria-label="输入消息"></textarea>
+            <div class="composer-row">
+              <div class="quick-controls">
+                <button id="streamToggle" class="chip active" type="button" aria-pressed="true" hidden>流式</button>
+                <button id="thinkingToggle" class="chip" type="button" aria-pressed="false" hidden>思考</button>
+                <select id="quickModel" class="quick-select" aria-label="模型" hidden></select>
+                <button id="quickModelButton" class="model-picker-trigger" type="button">
+                  <span id="quickModelVendor">模型</span>
+                  <strong id="quickModelLabel">未选择模型</strong>
+                  <span aria-hidden="true">⌄</span>
+                </button>
+              </div>
+              <div class="send-wrap">
+                <button id="stopButton" class="stop-button" type="button" hidden>停止</button>
+                <button id="sendButton" class="send-button" type="submit">生成图片</button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </main>
+    </div>
+
+    <div id="overlay" class="overlay" hidden></div>
+
+    <dialog id="settingsDialog" class="settings-dialog">
+      <div class="settings-header">
+        <div>
+          <h2>设置</h2>
+          <span id="connectionState" class="status-pill">未测试</span>
+        </div>
+        <button id="closeSettings" class="settings-close" type="button" aria-label="关闭" title="关闭">×</button>
+      </div>
+
+      <div class="settings-layout">
+        <nav class="settings-nav" aria-label="设置分类">
+          <button class="settings-nav-button active" type="button" data-settings-tab="api">API 配置</button>
+          <button class="settings-nav-button" type="button" data-settings-tab="models">模型设置</button>
+          <button class="settings-nav-button" type="button" data-settings-tab="advanced">高级设置</button>
+        </nav>
+
+        <div class="settings-body">
+          <section class="settings-section active" data-settings-section="api">
+            <h3>API 配置</h3>
+            <label class="field">
+              <span>API Base URL</span>
+              <input id="baseUrl" type="url" placeholder="https://api.example.com" spellcheck="false" />
+            </label>
+            <label class="field">
+              <span>API Key</span>
+              <div class="settings-input-actions">
+                <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+                <button id="toggleApiKey" class="input-action" type="button">显示</button>
+                <button id="copyApiKey" class="input-action" type="button">复制</button>
+              </div>
+            </label>
+            <p class="settings-note">
+              当前客户端只部署静态前端，默认连接 deeprouter.top。图片和视频请求会按所选模型映射参数，实际可用性取决于你的 API 网关支持的端点。
+            </p>
+            <div id="connectionDetail" class="connection-detail" role="status" aria-live="polite"></div>
+          </section>
+
+          <section class="settings-section" data-settings-section="models" hidden>
+            <div class="settings-section-title">
+              <h3>模型设置</h3>
+              <button id="reloadModels" class="tool-button" type="button">获取模型</button>
+            </div>
+            <div class="settings-grid settings-model-grid">
+              <label class="field">
+                <span>聊天模型</span>
+                <select id="chatModel"></select>
+              </label>
+              <label class="field">
+                <span>图片模型</span>
+                <select id="imageModel"></select>
+              </label>
+              <label class="field">
+                <span>视频模型</span>
+                <select id="videoModel"></select>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-section" data-settings-section="advanced" hidden>
+            <h3>高级设置</h3>
+            <div class="settings-grid">
+              <label class="field">
+                <span>Temperature</span>
+                <input id="temperature" type="number" min="0" max="2" step="0.1" />
+              </label>
+              <label class="field">
+                <span>上下文轮数</span>
+                <input id="contextTurns" type="number" min="1" max="50" step="1" />
+              </label>
+              <label class="field">
+                <span>视觉上下文轮数</span>
+                <input id="visualContextTurns" type="number" min="1" max="10" step="1" />
+              </label>
+              <label class="field">
+                <span>图片接口风格</span>
+                <select id="imageApiStyle">
+                  <option value="auto">自动识别</option>
+                  <option value="openai">OpenAI 图片接口</option>
+                  <option value="gemini">Gemini 自动适配</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>视频接口风格</span>
+                <select id="videoApiStyle">
+                  <option value="auto">自动识别</option>
+                  <option value="generic">通用兼容</option>
+                  <option value="gemini">Gemini/Veo 原生</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>图片生成端点</span>
+                <input id="imageEndpoint" placeholder="/v1/images/generations" spellcheck="false" />
+              </label>
+              <label class="field">
+                <span>图片编辑端点</span>
+                <input id="imageEditEndpoint" placeholder="/v1/images/edits" spellcheck="false" />
+              </label>
+              <label class="field">
+                <span>视频生成端点</span>
+                <input id="videoEndpoint" placeholder="/v1/video/generations" spellcheck="false" />
+              </label>
+              <label class="field">
+                <span>视频查询端点</span>
+                <input id="videoStatusEndpoint" placeholder="/v1/video/generations/{id}" spellcheck="false" />
+              </label>
+            </div>
+            <label class="field">
+              <span>系统提示词</span>
+              <textarea id="systemPrompt" rows="4" placeholder="你是一个专业的 AI 创作助手。"></textarea>
+            </label>
+          </section>
+        </div>
+      </div>
+
+      <div class="settings-footer">
+        <div class="settings-footer-group">
+          <button id="importData" class="tool-button" type="button">导入</button>
+          <button id="exportData" class="tool-button" type="button">导出</button>
+        </div>
+        <div class="settings-footer-group settings-footer-primary">
+          <button id="clearAll" class="danger-button" type="button">清空数据</button>
+          <button id="testConnection" class="tool-button" type="button">测试连接</button>
+          <button id="saveSettings" class="accent-button" type="button">保存设置</button>
+        </div>
+      </div>
+
+      <div id="unsavedSettingsPrompt" class="settings-confirm-layer" hidden>
+        <div class="settings-confirm" role="alertdialog" aria-modal="true" aria-labelledby="unsavedSettingsTitle">
+          <h3 id="unsavedSettingsTitle">检测到未保存的更改，是否保存？</h3>
+          <div class="settings-confirm-actions">
+            <button id="cancelSettingsClose" class="tool-button" type="button">取消</button>
+            <button id="discardSettingsClose" class="tool-button" type="button">不保存</button>
+            <button id="saveSettingsClose" class="accent-button" type="button">保存</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="mediaViewer" class="media-viewer">
+      <div class="viewer-toolbar">
+        <div>
+          <strong id="viewerTitle">媒体预览</strong>
+          <span id="viewerZoomLabel">100%</span>
+        </div>
+        <div class="viewer-actions">
+          <button id="viewerZoomOut" class="icon-button" type="button" title="缩小" aria-label="缩小">−</button>
+          <button id="viewerZoomIn" class="icon-button" type="button" title="放大" aria-label="放大">+</button>
+          <button id="viewerFit" class="tool-button" type="button">适应</button>
+          <a id="viewerDownload" class="tool-button viewer-download" download>下载</a>
+          <button id="closeMediaViewer" class="icon-button" type="button" title="关闭" aria-label="关闭">×</button>
+        </div>
+      </div>
+      <div id="viewerStage" class="viewer-stage">
+        <img id="viewerImage" alt="媒体预览" hidden />
+        <video id="viewerVideo" controls playsinline hidden></video>
+      </div>
+    </dialog>
+
+    <dialog id="modelPicker" class="model-picker-dialog">
+      <div class="model-picker-header">
+        <div>
+          <strong id="modelPickerTitle">选择模型</strong>
+          <span id="modelPickerCount">0 个模型</span>
+        </div>
+        <button id="closeModelPicker" class="icon-button" type="button" title="关闭" aria-label="关闭">×</button>
+      </div>
+      <div class="model-picker-body">
+        <aside class="model-vendor-panel">
+          <div class="model-vendor-heading">模型分组</div>
+          <nav id="modelVendorList" class="model-vendor-list"></nav>
+        </aside>
+        <section class="model-results-panel">
+          <label class="model-search-wrap">
+            <span aria-hidden="true">⌕</span>
+            <input id="modelSearch" type="search" placeholder="搜索模型..." autocomplete="off" />
+          </label>
+          <div id="modelPickerList" class="model-picker-list"></div>
+        </section>
+      </div>
+    </dialog>
+
+    <input id="importFile" type="file" accept="application/json" hidden />
+    <input id="imageReferenceFiles" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+    <input id="videoReferenceFiles" type="file" accept="video/mp4,video/webm,video/quicktime" multiple hidden />
+    <input id="firstFrameFile" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+    <input id="lastFrameFile" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+    <input id="audioReferenceFile" type="file" accept="audio/mpeg,audio/wav,audio/mp4,audio/webm" hidden />
+    <input id="chatAttachmentFiles" type="file" accept="image/*,text/*,.pdf,.doc,.docx,.csv,.json,.md,.xml" multiple hidden />
+    <datalist id="modelOptions"></datalist>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="./app.js?v=20260727-40" defer></script>
+  </body>
+</html>
