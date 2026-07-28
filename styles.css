@@ -3425,6 +3425,23 @@ summary:active,
   font-size: 12px;
 }
 
+.settings-note span {
+  display: block;
+}
+
+.settings-note a {
+  color: var(--text-main);
+  font-weight: 650;
+  text-decoration: none;
+  transition: color 160ms ease, opacity 160ms ease;
+}
+
+.settings-note a:hover {
+  opacity: 0.68;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .connection-detail {
   min-height: 42px;
   padding: 11px 12px;

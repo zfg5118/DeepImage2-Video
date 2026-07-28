@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f8f8f9" />
     <title>DeepImage2-Video</title>
     <link rel="icon" href="./favicon.ico?v=20260727-40" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20260727-40" />
+    <link rel="stylesheet" href="./styles.css?v=20260728-41" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -239,7 +239,8 @@
               </div>
             </label>
             <p class="settings-note">
-              当前客户端只部署静态前端，默认连接 deeprouter.top。图片和视频请求会按所选模型映射参数，实际可用性取决于你的 API 网关支持的端点。
+              <span>还没有 Key？<a href="https://deeprouter.top/keys" target="_blank" rel="noopener noreferrer">前往获取令牌</a></span>
+              <span>Key 与 URL 上传和生成内容，仅存储在浏览器本地，不会上传至任何服务器</span>
             </p>
             <div id="connectionDetail" class="connection-detail" role="status" aria-live="polite"></div>
           </section>
@@ -398,6 +399,6 @@
     <datalist id="modelOptions"></datalist>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-    <script src="./app.js?v=20260727-40" defer></script>
+    <script src="./app.js?v=20260728-41" defer></script>
   </body>
 </html>
