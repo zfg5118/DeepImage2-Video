@@ -196,6 +196,7 @@ const VIDEO_DURATION_OPTIONS = [
 ];
 
 const GROK_VIDEO_DURATIONS = [6, 10, 12, 16, 20];
+const MISSING_VIDEO_TASK_RETRY_LIMIT = 12;
 
 const VIDEO_STYLE_OPTIONS = [
   { value: "cinematic", label: "电影" },
@@ -1300,9 +1301,14 @@ function renderOutputOptions() {
   renderOptionGroup(els.videoAspectGroup, "videoAspectRatio", videoAspectOptionsForModel(), effectiveVideoAspectRatio());
   const videoAspectRow = els.videoAspectGroup.closest(".setting-row");
   const videoResolutionRow = els.videoResolutionGroup.closest(".setting-row");
+  const videoStyleRow = els.videoStyleGroup.closest(".setting-row");
+  const videoAudioRow = els.videoAudioToggle.closest(".toggle-row");
+  const usesMinimalGrokRequest = isGrokImagine15Model(state.settings.videoModel);
   const videoAspectLabel = videoAspectRow?.querySelector(":scope > span");
   if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "比例";
-  if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize;
+  if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize || usesMinimalGrokRequest;
+  if (videoStyleRow) videoStyleRow.hidden = usesMinimalGrokRequest;
+  if (videoAudioRow) videoAudioRow.hidden = usesMinimalGrokRequest;
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
   renderOptionGroup(els.videoDurationGroup, "videoDuration", videoDurationOptionsForModel(), String(effectiveVideoDuration()));
   renderOptionGroup(els.videoStyleGroup, "videoStyle", VIDEO_STYLE_OPTIONS, state.settings.videoStyle);
@@ -2979,8 +2985,10 @@ function buildGrokMultipartVideoRequest(prompt, profile, endpoint) {
   form.append("size", effectiveVideoAspectRatio(settings.videoModel));
   const duration = effectiveVideoDuration(settings.videoModel);
   form.append("seconds", String(duration));
-  form.append("duration", String(duration));
-  form.append("resolution", effectiveVideoResolution(settings.videoModel));
+  if (!isGrokImagine15Model(settings.videoModel)) {
+    form.append("duration", String(duration));
+    form.append("resolution", effectiveVideoResolution(settings.videoModel));
+  }
   const reference = draftMedia.videoImages[0] || draftMedia.firstFrame || draftMedia.lastFrame;
   if (reference?.file) form.append("input_reference", reference.file, reference.name);
   return {
@@ -3115,6 +3123,12 @@ function videoGenerationEndpoint(profile) {
 function videoTaskParams() {
   const settings = state.settings;
   const duration = effectiveVideoDuration(settings.videoModel);
+  if (isGrokImagine15Model(settings.videoModel)) {
+    return {
+      aspectRatio: effectiveVideoAspectRatio(settings.videoModel),
+      duration: `${duration}s`,
+    };
+  }
   return {
     aspectRatio: effectiveVideoAspectRatio(settings.videoModel),
     resolution: effectiveVideoResolution(settings.videoModel),
@@ -3252,7 +3266,7 @@ function failMissingVideoTaskAfterRetries(task, message) {
   if (!/task[_ ]?not[_ ]?exist|任务不存在/i.test(String(message || ""))) return false;
   task.missingTaskPolls = (task.missingTaskPolls || 0) + 1;
   task.lastPollError = message;
-  if (task.missingTaskPolls < 3) return false;
+  if (!shouldStopMissingVideoTaskPolling(task.missingTaskPolls)) return false;
   task.status = "error";
   task.error = "视频任务已创建，但 DeepRouter 查询接口未映射该任务 ID（task_not_exist）";
   saveState();
@@ -3260,6 +3274,11 @@ function failMissingVideoTaskAfterRetries(task, message) {
   showToast(task.error, true);
   return true;
 }
+
+function shouldStopMissingVideoTaskPolling(attempts) {
+  return Number(attempts) >= MISSING_VIDEO_TASK_RETRY_LIMIT;
+}
+
 function videoStatusEndpointForTask(task) {
   const endpoint = state.settings.videoStatusEndpoint || DEFAULT_SETTINGS.videoStatusEndpoint;
   const defaultLike = !endpoint || endpoint === DEFAULT_SETTINGS.videoStatusEndpoint || endpoint === "/v1/videos/{id}";
@@ -3279,7 +3298,9 @@ function videoStatusEndpointForTask(task) {
 
 function videoStatusHeadersForTask(task) {
   if (task?.provider === "xai") {
-    return isGrokJsonVideoEndpoint(task.requestEndpoint) ? authHeaders(false) : rawAuthHeaders();
+    return isGrokJsonVideoEndpoint(task.requestEndpoint)
+      ? authHeaders()
+      : { ...rawAuthHeaders(), "Content-Type": "application/json" };
   }
   if (task?.provider === "veo" && task.requestEndpoint === "/v1/videos") {
     return rawAuthHeaders();
@@ -5201,6 +5222,7 @@ if (typeof module !== "undefined" && module.exports) {
     resolveWebSearchModel,
     resolveGeminiImageRoute,
     resolveChatProtocol,
+    shouldStopMissingVideoTaskPolling,
     videoStatusEndpointForTask,
     videoStatusHeadersForTask,
     setTestSettings(settings) {

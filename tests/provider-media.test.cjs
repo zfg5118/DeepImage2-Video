@@ -20,6 +20,7 @@ const {
   extractVideoUrls,
   normalizeModelRecords,
   normalizeState,
+  shouldStopMissingVideoTaskPolling,
   setTestDraftMedia,
   setTestSettings,
   videoStatusHeadersForTask,
@@ -66,8 +67,16 @@ test("Grok Imagine 1.5 supports text-to-video on the DeepRouter multipart endpoi
   assert.equal(request.body.get("model"), "grok-imagine-video-1.5-preview");
   assert.equal(request.body.get("prompt"), "测试视频提示词");
   assert.equal(request.body.get("seconds"), "20");
-  assert.equal(request.body.get("resolution"), "720p");
+  assert.deepEqual([...request.body.keys()], ["model", "prompt", "size", "seconds"]);
   assert.equal(request.body.has("input_reference"), false);
+});
+
+test("Grok Imagine 1.5 preserves every selected duration in the minimal multipart request", () => {
+  [6, 10, 12, 16, 20].forEach((duration) => {
+    const request = buildVideo("grok-imagine-video-1.5-preview", "xai", { videoDuration: duration });
+    assert.equal(request.body.get("seconds"), String(duration));
+    assert.deepEqual([...request.body.keys()], ["model", "prompt", "size", "seconds"]);
+  });
 });
 
 test("Grok Imagine 1.5 uses the documented multipart endpoint with an image", () => {
@@ -84,11 +93,12 @@ test("Grok Imagine 1.5 uses the documented multipart endpoint with an image", ()
   assert.equal(request.body instanceof FormData, true);
   assert.equal(request.body.get("model"), "grok-imagine-video-1.5-preview");
   assert.equal(request.body.get("size"), "3:2");
-  assert.equal(request.body.get("resolution"), "720p");
   assert.equal(request.body.get("seconds"), "20");
-  assert.equal(request.body.get("duration"), "20");
+  assert.equal(request.body.has("resolution"), false);
+  assert.equal(request.body.has("duration"), false);
   assert.equal(request.body.get("input_reference") instanceof Blob, true);
   assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "test-key");
+  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint })["Content-Type"], "application/json");
 });
 
 test("nested video task errors expose the upstream cause", () => {
@@ -114,6 +124,12 @@ test("nested queued video responses expose their task ID", () => {
   };
   assert.equal(extractJobId(response), "29d48f1857d04674a663ff00e5750689");
   assert.equal(extractTaskStatus(response), "queued");
+});
+
+test("missing DeepRouter video tasks receive a polling grace period", () => {
+  assert.equal(shouldStopMissingVideoTaskPolling(3), false);
+  assert.equal(shouldStopMissingVideoTaskPolling(11), false);
+  assert.equal(shouldStopMissingVideoTaskPolling(12), true);
 });
 
 test("stringified task payloads expose completed video URLs", () => {
@@ -160,6 +176,7 @@ test("Grok Imagine 1.5 supports the official JSON endpoint when configured", () 
     image: { url: "data:image/png;base64,YWJjZA==" },
   });
   assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "Bearer test-key");
+  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint })["Content-Type"], "application/json");
 });
 
 test("all Grok video models use the shared supported duration and resolution values", () => {
