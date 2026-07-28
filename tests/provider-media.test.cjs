@@ -54,11 +54,20 @@ function buildVideo(model, provider, overrides = {}, draft = {}) {
   return buildVideoRequest("测试视频提示词", { id: model, provider, vendor });
 }
 
-test("Grok Imagine 1.5 blocks text-to-video on the unsupported DeepRouter channel", () => {
-  assert.throws(
-    () => buildVideo("grok-imagine-video-1.5-preview", "xai", { videoResolution: "720p" }),
-    /未给 grok-imagine-video-1\.5-preview 配置文生视频通道/
-  );
+test("Grok Imagine 1.5 supports text-to-video on the DeepRouter multipart endpoint", () => {
+  const request = buildVideo("grok-imagine-video-1.5-preview", "xai", {
+    videoResolution: "720p",
+    videoDuration: 20,
+  });
+
+  assert.equal(request.endpoint, "/v1/videos");
+  assert.equal(request.headers.Authorization, "test-key");
+  assert.equal(request.body instanceof FormData, true);
+  assert.equal(request.body.get("model"), "grok-imagine-video-1.5-preview");
+  assert.equal(request.body.get("prompt"), "测试视频提示词");
+  assert.equal(request.body.get("seconds"), "20");
+  assert.equal(request.body.get("resolution"), "720p");
+  assert.equal(request.body.has("input_reference"), false);
 });
 
 test("Grok Imagine 1.5 uses the documented multipart endpoint with an image", () => {
@@ -87,10 +96,10 @@ test("nested video task errors expose the upstream cause", () => {
     code: "fail_to_fetch_task",
     message: JSON.stringify({
       code: "fail_to_fetch_task",
-      message: JSON.stringify({ status: "failed", error: { message: "该模型不支持文生视频" } }),
+      message: JSON.stringify({ status: "failed", error: { message: "上游视频生成失败" } }),
     }),
   };
-  assert.equal(extractErrorMessage(failure), "该模型不支持文生视频");
+  assert.equal(extractErrorMessage(failure), "上游视频生成失败");
   assert.equal(extractTaskStatus(failure), "failed");
 });
 
@@ -351,6 +360,7 @@ test("video providers are classified and operation paths remain pollable", () =>
     ["Google", "video", "veo"],
     ["Google", "video", "veo"],
   ]);
+  assert.deepEqual(records[0].capabilities, ["文生视频", "图生视频"]);
   assert.equal(extractJobId({ name: "models/veo/operations/op-123" }), "models/veo/operations/op-123");
   setTestSettings({
     baseUrl: "https://generativelanguage.googleapis.com",

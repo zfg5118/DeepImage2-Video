@@ -103,8 +103,8 @@ const MODEL_CATALOG = [
     vendor: "xAI",
     type: "video",
     provider: "xai",
-    capabilities: ["图生视频", "1080p"],
-    description: "DeepRouter 当前仅为该模型配置了图生视频通道。",
+    capabilities: ["文生视频", "图生视频"],
+    description: "支持纯文本生成视频，也可上传一张参考图进行图生视频。",
   },
   {
     id: "veo-3.1",
@@ -1219,6 +1219,7 @@ function renderModes() {
 function renderControls() {
   const isVisual = activeMode === "image";
   const visualMode = state.settings.visualMode;
+  const grokVideoSelected = isVisual && visualMode === "video" && isGrokVideoModel(state.settings.videoModel);
   els.visualToolbar.hidden = !isVisual;
   els.chatToolbar.hidden = isVisual;
   els.chatWebToggle.classList.toggle("active", !!state.settings.chatWeb);
@@ -1233,10 +1234,13 @@ function renderControls() {
   els.thinkingToggle.setAttribute("aria-pressed", String(state.settings.thinking));
   els.streamToggle.hidden = isVisual;
   els.thinkingToggle.hidden = isVisual;
-  els.uploadFirstFrameButton.hidden = !isVisual || visualMode !== "video";
-  els.uploadLastFrameButton.hidden = !isVisual || visualMode !== "video";
-  els.uploadVideoRefButton.hidden = !isVisual || visualMode !== "video";
-  els.uploadAudioButton.hidden = !isVisual || visualMode !== "video";
+  els.uploadImageRefButton.title = grokVideoSelected
+    ? "上传一张参考图进行图生视频"
+    : visualMode === "video" ? "上传视频参考图" : "上传图片进行图生图";
+  els.uploadFirstFrameButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
+  els.uploadLastFrameButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
+  els.uploadVideoRefButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
+  els.uploadAudioButton.hidden = !isVisual || visualMode !== "video" || grokVideoSelected;
   fillQuickModelSelect();
   const selectedModel = activeMode === "image"
     ? state.settings.visualMode === "video"
@@ -2953,7 +2957,7 @@ function buildGrokJsonVideoRequest(prompt, profile, endpoint) {
     aspect_ratio: effectiveVideoAspectRatio(settings.videoModel),
     resolution: effectiveVideoResolution(settings.videoModel),
   };
-  const primaryImage = draftMedia.firstFrame || draftMedia.videoImages[0] || draftMedia.lastFrame;
+  const primaryImage = draftMedia.videoImages[0] || draftMedia.firstFrame || draftMedia.lastFrame;
   if (primaryImage) body.image = { url: primaryImage.dataUrl };
   if (!isGrokImagine15Model(settings.videoModel)) {
     const references = draftMedia.firstFrame ? draftMedia.videoImages : draftMedia.videoImages.slice(1);
@@ -2977,10 +2981,7 @@ function buildGrokMultipartVideoRequest(prompt, profile, endpoint) {
   form.append("seconds", String(duration));
   form.append("duration", String(duration));
   form.append("resolution", effectiveVideoResolution(settings.videoModel));
-  const reference = draftMedia.firstFrame || draftMedia.videoImages[0] || draftMedia.lastFrame;
-  if (isGrokImagine15Model(settings.videoModel) && !reference?.file) {
-    throw new Error("DeepRouter 当前未给 grok-imagine-video-1.5-preview 配置文生视频通道，请上传首帧/参考图，或改用 grok-video-3 系列");
-  }
+  const reference = draftMedia.videoImages[0] || draftMedia.firstFrame || draftMedia.lastFrame;
   if (reference?.file) form.append("input_reference", reference.file, reference.name);
   return {
     label: `${profile?.vendor || "Grok"} Multipart 视频参数`,
@@ -3323,7 +3324,11 @@ function renderImages() {
   els.taskCount.textContent = String(tasks.length);
   els.imageEmpty.hidden = tasks.length > 0;
   els.visualEmptyText.textContent =
-    visualMode === "video" ? "输入镜头描述，可上传首帧、尾帧、参考视频或音频。" : "输入画面描述，或上传参考图进行图生图。";
+    visualMode === "video"
+      ? isGrokVideoModel(state.settings.videoModel)
+        ? "输入镜头描述生成视频，或上传参考图进行图生视频。"
+        : "输入镜头描述，可上传首帧、尾帧、参考视频或音频。"
+      : "输入画面描述，或上传参考图进行图生图。";
 
   tasks.forEach((task) => {
     els.imageGrid.appendChild(renderVisualTask(task));
@@ -4789,7 +4794,9 @@ function inferModelProfile(modelId, raw = {}) {
   if (isSora2Model(id)) return { id: modelId, label: modelId, vendor: "OpenAI", type: "video", provider: "sora", capabilities: ["视频"] };
   if (id.includes("veo")) return { id: modelId, label: modelId, vendor: "Google", type: "video", provider: "veo", capabilities: ["视频"] };
   if (id.includes("seedance")) return { id: modelId, label: modelId, vendor: "Doubao", type: "video", provider: "seedance", capabilities: ["视频"] };
-  if (id.includes("grok") && id.includes("video")) return { id: modelId, label: modelId, vendor: "xAI", type: "video", provider: "xai", capabilities: ["视频"] };
+  if (id.includes("grok") && id.includes("video")) {
+    return { id: modelId, label: modelId, vendor: "xAI", type: "video", provider: "xai", capabilities: ["文生视频", "图生视频"] };
+  }
   if (/(kling|runway|luma|hailuo|vidu|sora|wan-|video)/.test(id)) {
     return { id: modelId, label: modelId, vendor: inferVendor(id, owner), type: "video", provider: inferProvider(id, owner), capabilities: ["视频"] };
   }
