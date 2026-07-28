@@ -2777,16 +2777,31 @@ async function generateVideo(prompt) {
   renderSessions();
 
   try {
-    const request = buildVideoRequest(requestPrompt, profile);
+    let request = buildVideoRequest(requestPrompt, profile);
     task.requestMode = request.label;
     task.requestEndpoint = request.endpoint;
-    const response = await fetch(apiUrl(request.endpoint), {
+    let response = await fetch(apiUrl(request.endpoint), {
       method: "POST",
       headers: request.headers,
       body: request.body,
       signal: abortController.signal,
     });
-    if (!response.ok) throw new Error(await responseError(response));
+    if (!response.ok) {
+      const initialError = await responseError(response);
+      const fallbackRequest = buildGrokTextVideoFallbackRequest(requestPrompt, profile, request, initialError);
+      if (!fallbackRequest) throw new Error(initialError);
+      request = fallbackRequest;
+      task.requestMode = request.label;
+      task.requestEndpoint = request.endpoint;
+      showToast("Multipart 通道不可用，正在切换 JSON 文生视频通道");
+      response = await fetch(apiUrl(request.endpoint), {
+        method: "POST",
+        headers: request.headers,
+        body: request.body,
+        signal: abortController.signal,
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+    }
     const data = await response.json();
     task.media = extractVideoUrls(data);
     task.jobId = extractJobId(data);
@@ -2948,6 +2963,14 @@ function buildGrokVideoRequest(prompt, profile) {
   return isGrokJsonVideoEndpoint(endpoint)
     ? buildGrokJsonVideoRequest(prompt, profile, endpoint)
     : buildGrokMultipartVideoRequest(prompt, profile, endpoint);
+}
+
+function buildGrokTextVideoFallbackRequest(prompt, profile, request, errorMessage) {
+  const hasImage = Boolean(draftMedia.videoImages[0] || draftMedia.firstFrame || draftMedia.lastFrame);
+  if (!isGrokImagine15Model(state.settings.videoModel) || hasImage) return null;
+  if (isGrokJsonVideoEndpoint(request?.endpoint)) return null;
+  if (!/requires? (?:a )?reference image|需要(?:上传)?参考图|必须(?:提供|上传).*图片/i.test(String(errorMessage || ""))) return null;
+  return buildGrokJsonVideoRequest(prompt, profile, "/v1/videos/generations");
 }
 
 function isGrokJsonVideoEndpoint(endpoint) {
@@ -3298,7 +3321,7 @@ function videoStatusEndpointForTask(task) {
 
 function videoStatusHeadersForTask(task) {
   if (task?.provider === "xai") {
-    return isGrokJsonVideoEndpoint(task.requestEndpoint)
+    return isGrokJsonVideoEndpoint(task.requestEndpoint) && !isDeepRouterBaseUrl()
       ? authHeaders()
       : { ...rawAuthHeaders(), "Content-Type": "application/json" };
   }
@@ -5180,6 +5203,7 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     apiUrl,
     buildChatRequest,
+    buildGrokTextVideoFallbackRequest,
     buildVideoRequest,
     buildVideoReferences,
     buildImageRequest,

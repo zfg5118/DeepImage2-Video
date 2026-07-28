@@ -12,6 +12,7 @@ global.document = {
 };
 
 const {
+  buildGrokTextVideoFallbackRequest,
   buildVideoRequest,
   encodeVideoTaskId,
   extractErrorMessage,
@@ -77,6 +78,43 @@ test("Grok Imagine 1.5 preserves every selected duration in the minimal multipar
     assert.equal(request.body.get("seconds"), String(duration));
     assert.deepEqual([...request.body.keys()], ["model", "prompt", "size", "seconds"]);
   });
+});
+
+test("Grok Imagine 1.5 retries text-to-video through the official JSON route", () => {
+  const multipart = buildVideo("grok-imagine-video-1.5-preview", "xai", {
+    videoAspectRatio: "9:16",
+    videoResolution: "720p",
+    videoDuration: 20,
+  });
+  const fallback = buildGrokTextVideoFallbackRequest(
+    "测试视频提示词",
+    { id: "grok-imagine-video-1.5-preview", provider: "xai", vendor: "xAI" },
+    multipart,
+    "grok 1.5 requires a reference image"
+  );
+
+  assert.equal(fallback.endpoint, "/v1/videos/generations");
+  assert.equal(fallback.headers.Authorization, "Bearer test-key");
+  assert.deepEqual(JSON.parse(fallback.body), {
+    model: "grok-imagine-video-1.5-preview",
+    prompt: "测试视频提示词",
+    duration: 20,
+    aspect_ratio: "9:16",
+    resolution: "720p",
+  });
+});
+
+test("Grok Imagine 1.5 does not use the text fallback when a reference image is present", () => {
+  const reference = media();
+  reference.file = new Blob(["abcd"], { type: "image/png" });
+  const multipart = buildVideo("grok-imagine-video-1.5-preview", "xai", {}, { videoImages: [reference] });
+  const fallback = buildGrokTextVideoFallbackRequest(
+    "测试视频提示词",
+    { id: "grok-imagine-video-1.5-preview", provider: "xai", vendor: "xAI" },
+    multipart,
+    "grok 1.5 requires a reference image"
+  );
+  assert.equal(fallback, null);
 });
 
 test("Grok Imagine 1.5 uses the documented multipart endpoint with an image", () => {
@@ -175,8 +213,11 @@ test("Grok Imagine 1.5 supports the official JSON endpoint when configured", () 
     resolution: "720p",
     image: { url: "data:image/png;base64,YWJjZA==" },
   });
-  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "Bearer test-key");
+  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "test-key");
   assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint })["Content-Type"], "application/json");
+
+  setTestSettings({ baseUrl: "https://api.x.ai", apiKey: "test-key" });
+  assert.equal(videoStatusHeadersForTask({ provider: "xai", requestEndpoint: request.endpoint }).Authorization, "Bearer test-key");
 });
 
 test("all Grok video models use the shared supported duration and resolution values", () => {
