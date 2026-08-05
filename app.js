@@ -3512,11 +3512,10 @@ function renderVisualTask(task) {
     retry.addEventListener("click", () => retryVisualTask(task.id));
     controls.appendChild(retry);
 
-    const armKey = `visual-task:${task.id}`;
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.className = `mini-button task-delete${deleteArmed === armKey ? " armed" : ""}`;
-    remove.textContent = deleteArmed === armKey ? "确认删除" : "删除";
+    remove.className = "mini-button task-delete";
+    remove.textContent = "删除";
     remove.addEventListener("click", () => deleteVisualTask(task.id));
     controls.appendChild(remove);
     card.appendChild(controls);
@@ -3816,24 +3815,10 @@ function mediaExtension(mime, type) {
 }
 
 function deleteVisualTask(taskId) {
-  const armKey = `visual-task:${taskId}`;
-  if (deleteArmed !== armKey) {
-    deleteArmed = armKey;
-    renderImages();
-    setTimeout(() => {
-      if (deleteArmed === armKey) {
-        deleteArmed = null;
-        renderImages();
-      }
-    }, 3000);
-    return;
-  }
-
   const task = state.visualTasks.find((item) => item.id === taskId);
   cancelImageRequest(taskId);
   state.visualTasks = state.visualTasks.filter((item) => item.id !== taskId);
   void deleteVisualMediaCacheForTask(taskId);
-  deleteArmed = null;
   const session = state.visualSessions.find((item) => item.id === task?.sessionId);
   if (session) session.updatedAt = Date.now();
   saveState();
