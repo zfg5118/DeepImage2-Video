@@ -620,8 +620,9 @@ function saveState() {
 function persistableState() {
   const persistedTasks = state.visualTasks.map((task) => {
     const sourceMedia = task.media || [];
-    if (task.type !== "image") return { ...task, media: sourceMedia };
-    const mediaCacheKeys = sourceMedia.map((_, index) => visualMediaCacheKey(task.id, index));
+    const usesMediaCache = task.type === "image" || sourceMedia.some((item) => isInlineMedia(item) || isMediaCacheReference(item));
+    if (!usesMediaCache) return { ...task, media: sourceMedia };
+    const mediaCacheKeys = sourceMedia.map((_, index) => task.mediaCacheKeys?.[index] || visualMediaCacheKey(task.id, index));
     const media = sourceMedia.map((item, index) => {
       if (isMediaCacheReference(item)) return item;
       return isInlineMedia(item) ? mediaCacheReference(mediaCacheKeys[index]) : item;
@@ -763,10 +764,11 @@ function revokeCachedMediaObjectUrls(taskId) {
 function scheduleVisualMediaCache() {
   if (typeof indexedDB === "undefined") return;
   state.visualTasks
-    .filter((task) => task.type === "image")
+    .filter((task) => task.type === "image" || (task.media || []).some((source) => isInlineMedia(source)))
     .forEach((task) => {
       (task.media || []).forEach((source, index) => {
         if (!source || isMediaCacheReference(source)) return;
+        if (task.type !== "image" && !isInlineMedia(source)) return;
         queueVisualMediaCacheWrite(visualMediaCacheKey(task.id, index), task.id, source);
       });
     });
@@ -821,7 +823,8 @@ async function cacheVisualTaskMedia(task) {
 
 async function restoreCachedVisualMedia() {
   const cachedTasks = state.visualTasks.filter(
-    (task) => task.type === "image" && (task.media || []).some((item) => isMediaCacheReference(item) || task.mediaCacheKeys?.length)
+    (task) => ["image", "video"].includes(task.type)
+      && (task.media || []).some((item) => isMediaCacheReference(item) || task.mediaCacheKeys?.length)
   );
   if (!cachedTasks.length) return;
 
@@ -832,7 +835,10 @@ async function restoreCachedVisualMedia() {
           const key = task.mediaCacheKeys?.[index] || mediaCacheKeyFromReference(source) || visualMediaCacheKey(task.id, index);
           try {
             const blob = await getVisualMediaCache(key);
-            if (!blob) return isMediaCacheReference(source) ? "" : source;
+            if (!blob) {
+              if (isMediaCacheReference(source)) return task.mediaSourceUrls?.[index] || "";
+              return source;
+            }
             const oldUrl = cachedMediaObjectUrls.get(key);
             if (oldUrl) URL.revokeObjectURL(oldUrl);
             const url = URL.createObjectURL(blob);
@@ -846,9 +852,16 @@ async function restoreCachedVisualMedia() {
         })
       );
       task.media = restored.filter(Boolean);
+      if (task.type === "video" && task.media.some((source) => isAuthenticatedVideoProxyUrl(source))) {
+        try {
+          task.media = await materializeVideoUrls(task.media, task);
+        } catch (error) {
+          console.warn("Unable to restore authenticated video result", error);
+        }
+      }
       if (task.status === "done" && !task.media.length) {
         task.status = "empty";
-        task.error = "浏览器缓存中未找到该图片结果。";
+        task.error = "浏览器缓存中未找到该媒体结果。";
       }
     })
   );
@@ -2846,10 +2859,11 @@ async function submitVideoTask(task, requestPrompt, profile, signal) {
       if (!response.ok) throw new Error(await responseError(response));
     }
     const data = await response.json();
-    task.media = extractVideoUrls(data);
+    const media = extractVideoUrls(data);
     task.jobId = extractJobId(data);
     task.rawStatus = extractTaskStatus(data) || task.rawStatus;
-    if (task.media.length) {
+    if (media.length) {
+      task.media = await materializeVideoUrls(media, task);
       task.status = "done";
     } else if (task.jobId) {
       task.status = "submitted";
@@ -3288,7 +3302,7 @@ async function refreshVideoTaskOnce(task) {
     task.rawStatus = status || task.rawStatus;
     task.lastPollError = "";
     if (media.length) {
-      task.media = media;
+      task.media = await materializeVideoUrls(media, task);
       task.status = "done";
       saveState();
       renderImages();
@@ -4593,7 +4607,9 @@ function extractVideoUrls(data) {
   const pushUrl = (value, mime = "video/mp4") => {
     if (!value) return;
     if (typeof value === "string") {
-      urls.push(value.startsWith("data:") || value.startsWith("http") ? value : `data:${mime};base64,${value}`);
+      if (value.startsWith("data:") || /^https?:\/\//i.test(value)) urls.push(value);
+      else if (value.startsWith("/")) urls.push(apiUrl(value));
+      else urls.push(`data:${mime};base64,${value}`);
     }
   };
   const visit = (value, key = "") => {
@@ -4614,6 +4630,8 @@ function extractVideoUrls(data) {
         if (/(video|url|uri|output|file|download|content|result|media|asset|source|src)/.test(lowerKey) || /\.(mp4|webm|mov|m3u8)(?:[?#].*)?$/i.test(text)) {
           pushUrl(text);
         }
+      } else if (text.startsWith("/") && /(video|url|uri|output|file|download|content|result|media|asset|source|src)/.test(lowerKey)) {
+        pushUrl(text);
       } else if (/(base64|b64|video_base64|b64_json)/.test(lowerKey) && /^[A-Za-z0-9+/=\s]+$/.test(text) && text.length > 80) {
         pushUrl(text.replace(/\s/g, ""));
       }
@@ -4631,6 +4649,43 @@ function extractVideoUrls(data) {
   const candidates = unique(urls);
   const directlyPlayable = candidates.filter((url) => !isAuthenticatedVideoProxyUrl(url));
   return directlyPlayable.length ? directlyPlayable : candidates;
+}
+
+async function materializeVideoUrls(urls, task) {
+  return Promise.all((urls || []).map(async (source, index) => {
+    if (!isAuthenticatedVideoProxyUrl(source)) return source;
+    const response = await fetch(apiUrl(source), {
+      headers: videoStatusHeadersForTask(task),
+    });
+    if (!response.ok) throw new Error(`视频结果下载失败：${await responseError(response)}`);
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (contentType.includes("application/json") || contentType.startsWith("text/")) {
+      const text = await response.text();
+      const payload = parseJsonPayload(text);
+      throw new Error(`视频结果下载失败：${deepestApiErrorMessage(payload) || text || "接口未返回视频文件"}`);
+    }
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("视频结果下载失败：返回文件为空");
+    const key = task?.mediaCacheKeys?.[index] || visualMediaCacheKey(task?.id || "video", index);
+    if (typeof indexedDB !== "undefined") {
+      try {
+        await putVisualMediaCache(key, task?.id || "video", blob);
+      } catch (error) {
+        console.warn("Unable to cache authenticated video result", error);
+      }
+    }
+    const oldUrl = cachedMediaObjectUrls.get(key);
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    const objectUrl = URL.createObjectURL(blob);
+    cachedMediaObjectUrls.set(key, objectUrl);
+    if (task) {
+      task.mediaCacheKeys = [...(task.mediaCacheKeys || [])];
+      task.mediaCacheKeys[index] = key;
+      task.mediaSourceUrls = [...(task.mediaSourceUrls || [])];
+      task.mediaSourceUrls[index] = source;
+    }
+    return objectUrl;
+  }));
 }
 
 function isAuthenticatedVideoProxyUrl(value) {
@@ -5263,6 +5318,7 @@ if (typeof module !== "undefined" && module.exports) {
     extractJobId,
     extractTaskStatus,
     extractVideoUrls,
+    materializeVideoUrls,
     imageSizeOptionsForModel,
     imageQualityOptionsForModel,
     imageStyleOptionsForModel,

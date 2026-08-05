@@ -19,6 +19,7 @@ const {
   extractJobId,
   extractTaskStatus,
   extractVideoUrls,
+  materializeVideoUrls,
   normalizeModelRecords,
   normalizeState,
   shouldStopMissingVideoTaskPolling,
@@ -192,6 +193,44 @@ test("completed DeepRouter tasks prefer the directly playable upstream video URL
   assert.deepEqual(extractVideoUrls(response), [
     "https://api.huandutech.com/v1/videos/task_upstream/content",
   ]);
+});
+
+test("relative DeepRouter video content URLs are normalized against the API base", () => {
+  setTestSettings({ baseUrl: "https://deeprouter.top" });
+  assert.deepEqual(extractVideoUrls({ result_url: "/v1/videos/task_relative/content" }), [
+    "https://deeprouter.top/v1/videos/task_relative/content",
+  ]);
+});
+
+test("authenticated DeepRouter video results are downloaded for browser playback", async () => {
+  setTestSettings({ baseUrl: "https://deeprouter.top", apiKey: "test-key" });
+  const originalFetch = global.fetch;
+  let receivedHeaders;
+  global.fetch = async (url, options) => {
+    assert.equal(url, "https://www.deeprouter.top/v1/videos/task_private/content");
+    receivedHeaders = options.headers;
+    return new Response(new Blob(["video-content"], { type: "video/mp4" }), {
+      status: 200,
+      headers: { "Content-Type": "video/mp4" },
+    });
+  };
+  try {
+    const task = { id: "visual-task", provider: "xai", requestEndpoint: "/v1/videos" };
+    const media = await materializeVideoUrls([
+      "https://www.deeprouter.top/v1/videos/task_private/content",
+    ], task);
+    assert.equal(receivedHeaders.Authorization, "test-key");
+    assert.match(media[0], /^blob:/);
+    assert.equal(task.mediaSourceUrls[0], "https://www.deeprouter.top/v1/videos/task_private/content");
+    URL.revokeObjectURL(media[0]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("public upstream video results remain directly playable", async () => {
+  const source = "https://cdn.example.com/result.mp4";
+  assert.deepEqual(await materializeVideoUrls([source], { id: "public-task", provider: "xai" }), [source]);
 });
 
 test("Grok Imagine 1.5 supports the official JSON endpoint when configured", () => {
