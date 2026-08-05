@@ -1124,7 +1124,15 @@ function bindEvents() {
 
     const refreshVideoButton = event.target.closest("[data-refresh-video]");
     if (refreshVideoButton) {
-      pollVideoTask(refreshVideoButton.dataset.refreshVideo, { immediate: true, attempts: 120 });
+      const task = state.visualTasks.find((item) => item.id === refreshVideoButton.dataset.refreshVideo);
+      if (!task?.jobId) return;
+      task.status = "submitted";
+      task.error = "";
+      task.lastPollError = "";
+      task.missingTaskPolls = 0;
+      saveState();
+      renderImages();
+      pollVideoTask(task.id, { immediate: true, attempts: 120 });
       showToast("正在刷新视频任务结果");
       return;
     }
