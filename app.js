@@ -2859,9 +2859,9 @@ async function submitVideoTask(task, requestPrompt, profile, signal) {
       if (!response.ok) throw new Error(await responseError(response));
     }
     const data = await response.json();
-    const media = extractVideoUrls(data);
     task.jobId = extractJobId(data);
     task.rawStatus = extractTaskStatus(data) || task.rawStatus;
+    const media = videoResultUrlsForTask(data, task);
     if (media.length) {
       task.media = await materializeVideoUrls(media, task);
       task.status = "done";
@@ -3297,8 +3297,8 @@ async function refreshVideoTaskOnce(task) {
     const payloadError = extractErrorMessage(data);
     if (failMissingVideoTaskAfterRetries(task, payloadError)) return "failed";
     task.missingTaskPolls = 0;
-    const media = extractVideoUrls(data);
     const status = extractTaskStatus(data);
+    const media = videoResultUrlsForTask(data, task);
     task.rawStatus = status || task.rawStatus;
     task.lastPollError = "";
     if (media.length) {
@@ -4600,6 +4600,7 @@ function extractVideoUrls(data) {
   const visit = (value, key = "") => {
     if (value === null || value === undefined) return;
     const lowerKey = String(key).toLowerCase();
+    if (/(?:^|_)(?:thumbnail|poster|cover)(?:$|_)/.test(lowerKey)) return;
     if (typeof value === "string") {
       const text = value.trim();
       if (!text) return;
@@ -4612,6 +4613,7 @@ function extractVideoUrls(data) {
       }
       if (text.startsWith("data:video/")) pushUrl(text);
       else if (/^https?:\/\//i.test(text)) {
+        if (/\.(?:png|jpe?g|webp|gif|avif)(?:[?#].*)?$/i.test(text)) return;
         if (/(video|url|uri|output|file|download|content|result|media|asset|source|src)/.test(lowerKey) || /\.(mp4|webm|mov|m3u8)(?:[?#].*)?$/i.test(text)) {
           pushUrl(text);
         }
@@ -4634,6 +4636,16 @@ function extractVideoUrls(data) {
   const candidates = unique(urls);
   const directlyPlayable = candidates.filter((url) => !isAuthenticatedVideoProxyUrl(url));
   return directlyPlayable.length ? directlyPlayable : candidates;
+}
+
+function videoResultUrlsForTask(data, task) {
+  const media = extractVideoUrls(data);
+  if (media.length) return media;
+  const status = String(extractTaskStatus(data) || "").toLowerCase();
+  const completed = ["succeeded", "success", "completed", "complete", "finished", "done"].includes(status);
+  if (!completed || task?.provider !== "xai" || !task?.jobId) return [];
+  const id = encodeVideoTaskId(task.jobId, task);
+  return [apiUrl(`/v1/videos/${id}/content`)];
 }
 
 async function materializeVideoUrls(urls, task) {
@@ -5304,6 +5316,7 @@ if (typeof module !== "undefined" && module.exports) {
     extractTaskStatus,
     extractVideoUrls,
     materializeVideoUrls,
+    videoResultUrlsForTask,
     imageSizeOptionsForModel,
     imageQualityOptionsForModel,
     imageStyleOptionsForModel,

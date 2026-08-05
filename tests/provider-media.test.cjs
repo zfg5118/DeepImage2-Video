@@ -27,6 +27,7 @@ const {
   setTestSettings,
   videoStatusHeadersForTask,
   videoStatusEndpointForTask,
+  videoResultUrlsForTask,
 } = require("../app.js");
 
 function media(name = "reference.png") {
@@ -193,6 +194,26 @@ test("completed DeepRouter tasks prefer the directly playable upstream video URL
   assert.deepEqual(extractVideoUrls(response), [
     "https://api.huandutech.com/v1/videos/task_upstream/content",
   ]);
+});
+
+test("Grok result parsing ignores thumbnails and keeps the authenticated video", () => {
+  setTestSettings({ baseUrl: "https://deeprouter.top" });
+  const response = {
+    status: "succeeded",
+    result_url: "/v1/videos/task_with_thumbnail/content",
+    thumbnail_url: "https://cdn.example.com/task-preview.jpg",
+  };
+  assert.deepEqual(extractVideoUrls(response), [
+    "https://deeprouter.top/v1/videos/task_with_thumbnail/content",
+  ]);
+});
+
+test("completed Grok tasks derive the standard content endpoint when no URL is returned", () => {
+  setTestSettings({ baseUrl: "https://deeprouter.top" });
+  assert.deepEqual(videoResultUrlsForTask(
+    { id: "task_completed_without_url", status: "completed" },
+    { jobId: "task_completed_without_url", provider: "xai", requestEndpoint: "/v1/videos" }
+  ), ["https://deeprouter.top/v1/videos/task_completed_without_url/content"]);
 });
 
 test("relative DeepRouter video content URLs are normalized against the API base", () => {
