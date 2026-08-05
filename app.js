@@ -228,6 +228,7 @@ const DEFAULT_SETTINGS = {
   videoAspectRatio: "16:9",
   videoResolution: "720p",
   videoDuration: 5,
+  videoCount: 1,
   videoStyle: "cinematic",
   videoAudio: true,
   videoApiStyle: "auto",
@@ -323,6 +324,7 @@ function initElements() {
     "videoAspectGroup",
     "videoResolutionGroup",
     "videoDurationGroup",
+    "videoCountGroup",
     "videoStyleGroup",
     "videoAudioToggle",
     "uploadImageRefButton",
@@ -529,6 +531,7 @@ function normalizeState(input) {
   if (!input.settings?.videoStatusEndpoint || input.settings.videoStatusEndpoint === "/v1/videos/{id}") {
     settings.videoStatusEndpoint = DEFAULT_SETTINGS.videoStatusEndpoint;
   }
+  settings.videoCount = clampNumber(settings.videoCount, 1, 8, 1);
   if (input.settings?.imageSize && !input.settings?.imageAspectRatio) {
     settings.imageAspectRatio = aspectFromSize(input.settings.imageSize);
   }
@@ -1301,16 +1304,24 @@ function renderOutputOptions() {
   renderOptionGroup(els.videoAspectGroup, "videoAspectRatio", videoAspectOptionsForModel(), effectiveVideoAspectRatio());
   const videoAspectRow = els.videoAspectGroup.closest(".setting-row");
   const videoResolutionRow = els.videoResolutionGroup.closest(".setting-row");
+  const videoCountRow = els.videoCountGroup.closest(".setting-row");
   const videoStyleRow = els.videoStyleGroup.closest(".setting-row");
   const videoAudioRow = els.videoAudioToggle.closest(".toggle-row");
   const usesMinimalGrokRequest = isGrokImagine15Model(state.settings.videoModel);
   const videoAspectLabel = videoAspectRow?.querySelector(":scope > span");
   if (videoAspectLabel) videoAspectLabel.textContent = usesPixelSize ? "尺寸" : "比例";
   if (videoResolutionRow) videoResolutionRow.hidden = usesPixelSize || usesMinimalGrokRequest;
+  if (videoCountRow) videoCountRow.hidden = !isSeedance2Model(state.settings.videoModel);
   if (videoStyleRow) videoStyleRow.hidden = usesMinimalGrokRequest;
   if (videoAudioRow) videoAudioRow.hidden = usesMinimalGrokRequest;
   renderOptionGroup(els.videoResolutionGroup, "videoResolution", videoResolutionOptionsForModel(), effectiveVideoResolution());
   renderOptionGroup(els.videoDurationGroup, "videoDuration", videoDurationOptionsForModel(), String(effectiveVideoDuration()));
+  renderOptionGroup(
+    els.videoCountGroup,
+    "videoCount",
+    Array.from({ length: 8 }, (_, index) => ({ value: String(index + 1), label: String(index + 1) })),
+    String(effectiveVideoCount())
+  );
   renderOptionGroup(els.videoStyleGroup, "videoStyle", VIDEO_STYLE_OPTIONS, state.settings.videoStyle);
 }
 
@@ -1405,7 +1416,7 @@ function videoResolutionOptionsForModel() {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
   }
   if (isSeedance2Model(modelId)) {
-    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p"].includes(option.value));
+    return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p", "1080p", "4k"].includes(option.value));
   }
   if (isGrokVideoModel(modelId)) {
     return VIDEO_RESOLUTION_OPTIONS.filter((option) => ["480p", "720p"].includes(option.value));
@@ -1427,7 +1438,7 @@ function videoAspectOptionsForModel() {
   if (usesDeepRouterVeoCompatibility(modelId)) {
     return ["1920x1080", "1080x1920"].map((value) => ({ value, label: value }));
   }
-  if (isSeedance20UnifiedModel(modelId)) {
+  if (isSeedance2Model(modelId)) {
     return ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
       .map((value) => ({ value, label: value === "adaptive" ? "自适应" : value }));
   }
@@ -1465,7 +1476,7 @@ function videoDurationOptionsForModel() {
     const seconds = String(index + minimum);
     return { value: seconds, label: `${seconds}s` };
   });
-  return unified ? [{ value: "-1", label: "自动" }, ...options] : options;
+  return [{ value: "-1", label: "自动" }, ...options];
 }
 
 function isSeedanceModel(modelId) {
@@ -1477,7 +1488,7 @@ function isSeedance2Model(modelId) {
 }
 
 function isSeedance2FastModel(modelId) {
-  return /seedance.*2[-_.]?0.*fast/i.test(String(modelId || ""));
+  return /seedance.*2[-_.]?0.*(?:fast|mini)/i.test(String(modelId || ""));
 }
 
 function isSeedance20UnifiedModel(modelId) {
@@ -1550,7 +1561,7 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
     if (["1920x1080", "1080x1920"].includes(ratio)) return ratio;
     return ratio === "9:16" ? "1080x1920" : "1920x1080";
   }
-  if (isSeedance20UnifiedModel(modelId)) {
+  if (isSeedance2Model(modelId)) {
     return ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"].includes(ratio) ? ratio : "16:9";
   }
   if (isSeedanceModel(modelId)) {
@@ -1566,7 +1577,7 @@ function effectiveVideoAspectRatio(modelId = state.settings.videoModel) {
 function effectiveVideoResolution(modelId = state.settings.videoModel) {
   const resolution = state.settings.videoResolution;
   if (isSeedance2FastModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
-  if (isSeedance2Model(modelId)) return ["480p", "720p", "1080p"].includes(resolution) ? resolution : "720p";
+  if (isSeedance2Model(modelId)) return ["480p", "720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
   if (isGrokVideoModel(modelId)) return ["480p", "720p"].includes(resolution) ? resolution : "720p";
   if (isVeo2Model(modelId) || isVeo31LiteModel(modelId)) return "720p";
   if (isVeo31Model(modelId)) return ["720p", "1080p", "4k"].includes(resolution) ? resolution : "720p";
@@ -1577,7 +1588,7 @@ function effectiveVideoResolution(modelId = state.settings.videoModel) {
 function normalizeSeedDanceDuration(value, modelId = state.settings.videoModel) {
   const duration = Number(value);
   const unified = isSeedance20UnifiedModel(modelId);
-  if (unified && duration === -1) return -1;
+  if (isSeedance2Model(modelId) && duration === -1) return -1;
   const fallback = isSeedance2Model(modelId) ? 5 : 4;
   const minimum = unified ? 4 : isSeedance2Model(modelId) ? 5 : 1;
   const maximum = isSeedance2Model(modelId) ? 15 : 30;
@@ -1591,6 +1602,10 @@ function effectiveVideoDuration(modelId = state.settings.videoModel) {
   if (isGrokVideoModel(modelId)) return normalizeGrokVideoDuration(state.settings.videoDuration, modelId);
   if (isVeoModel(modelId)) return normalizeVeoDuration(state.settings.videoDuration, modelId);
   return clampNumber(state.settings.videoDuration, 1, 30, 5);
+}
+
+function effectiveVideoCount(modelId = state.settings.videoModel) {
+  return isSeedance2Model(modelId) ? clampNumber(state.settings.videoCount, 1, 8, 1) : 1;
 }
 
 function normalizeGrokVideoDuration(value, modelId = state.settings.videoModel) {
@@ -1636,6 +1651,7 @@ function imageStyleOptionsForModel() {
 function setVisualOption(key, value) {
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key)) return;
   if (key === "videoDuration") state.settings[key] = effectiveVideoDurationForValue(value);
+  else if (key === "videoCount") state.settings[key] = clampNumber(value, 1, 8, 1);
   else state.settings[key] = value;
   saveState();
   renderOutputOptions();
@@ -2750,13 +2766,15 @@ async function generateVideo(prompt) {
   if (!settings.apiKey) return showMissingSetting("请先填写 API Key");
 
   const requestPrompt = buildVisualContextPrompt(prompt);
+  const count = effectiveVideoCount(settings.videoModel);
   els.promptInput.value = "";
   autoResizePrompt();
   setLoading(true);
   abortController = new AbortController();
 
   const profile = getModelProfile(settings.videoModel);
-  const task = {
+  const createdAt = Date.now();
+  const tasks = Array.from({ length: count }, (_, index) => ({
     id: generateId(),
     type: "video",
     sessionId: activeVisualSessionId,
@@ -2764,18 +2782,43 @@ async function generateVideo(prompt) {
     contextApplied: requestPrompt !== prompt,
     model: settings.videoModel,
     provider: profile?.provider || "custom",
-    createdAt: Date.now(),
+    createdAt: createdAt + index,
     status: "running",
     media: [],
     params: videoTaskParams(),
     references: videoReferenceMeta(),
-  };
-  state.visualTasks.unshift(task);
+  }));
+  state.visualTasks.unshift(...tasks);
   updateVisualSession(getActiveVisualSession(), prompt);
   saveState();
   renderImages();
   renderSessions();
 
+  try {
+    await Promise.all(tasks.map((task) => submitVideoTask(task, requestPrompt, profile, abortController.signal)));
+    const completed = tasks.filter((task) => task.status === "done").length;
+    const submitted = tasks.filter((task) => task.status === "submitted").length;
+    const failed = tasks.filter((task) => ["error", "stopped", "empty"].includes(task.status)).length;
+    if (count === 1) {
+      const task = tasks[0];
+      if (task.status === "done") showToast(`已生成 ${task.media.length} 个视频`);
+      else if (task.status === "submitted") showToast("视频任务已提交，正在轮询结果");
+      else if (task.error) showToast(task.error, true);
+    } else if (failed === count) {
+      showToast(tasks.find((task) => task.error)?.error || "视频任务提交失败", true);
+    } else {
+      showToast(`已创建 ${completed + submitted}/${count} 个视频任务${failed ? `，${failed} 个失败` : ""}`, failed > 0);
+    }
+  } finally {
+    abortController = null;
+    saveState();
+    setLoading(false);
+    renderImages();
+    renderVisualMeta();
+  }
+}
+
+async function submitVideoTask(task, requestPrompt, profile, signal) {
   try {
     let request = buildVideoRequest(requestPrompt, profile);
     task.requestMode = request.label;
@@ -2784,7 +2827,7 @@ async function generateVideo(prompt) {
       method: "POST",
       headers: request.headers,
       body: request.body,
-      signal: abortController.signal,
+      signal,
     });
     if (!response.ok) {
       const initialError = await responseError(response);
@@ -2793,25 +2836,23 @@ async function generateVideo(prompt) {
       request = fallbackRequest;
       task.requestMode = request.label;
       task.requestEndpoint = request.endpoint;
-      showToast("Multipart 通道不可用，正在切换 JSON 文生视频通道");
+      task.rawStatus = "Multipart 通道不可用，已切换 JSON 文生视频通道";
       response = await fetch(apiUrl(request.endpoint), {
         method: "POST",
         headers: request.headers,
         body: request.body,
-        signal: abortController.signal,
+        signal,
       });
       if (!response.ok) throw new Error(await responseError(response));
     }
     const data = await response.json();
     task.media = extractVideoUrls(data);
     task.jobId = extractJobId(data);
-    task.rawStatus = extractTaskStatus(data);
+    task.rawStatus = extractTaskStatus(data) || task.rawStatus;
     if (task.media.length) {
       task.status = "done";
-      showToast(`已生成 ${task.media.length} 个视频`);
     } else if (task.jobId) {
       task.status = "submitted";
-      showToast("视频任务已提交，正在轮询结果");
       pollVideoTask(task.id, { attempts: 120 });
     } else {
       task.status = "empty";
@@ -2820,13 +2861,9 @@ async function generateVideo(prompt) {
   } catch (error) {
     task.status = error.name === "AbortError" ? "stopped" : "error";
     task.error = error.name === "AbortError" ? "已停止" : normalizeError(error);
-    showToast(task.error, true);
   } finally {
-    abortController = null;
     saveState();
-    setLoading(false);
     renderImages();
-    renderVisualMeta();
   }
 }
 
@@ -3156,6 +3193,7 @@ function videoTaskParams() {
     aspectRatio: effectiveVideoAspectRatio(settings.videoModel),
     resolution: effectiveVideoResolution(settings.videoModel),
     duration: duration === -1 ? "自动" : `${duration}s`,
+    count: isSeedance2Model(settings.videoModel) ? effectiveVideoCount(settings.videoModel) : undefined,
     style: settings.videoStyle,
     audio: effectiveVideoAudio(settings.videoModel) ? "开" : "关",
   };
@@ -3526,7 +3564,7 @@ function renderContinueButton(src, type, task) {
   button.type = "button";
   button.className = "media-continue";
   button.textContent = "继续创作";
-  button.title = type === "image" ? "将此图片作为下一次创作的参考图" : "将此视频作为下一次创作的参考视频";
+  button.title = type === "image" ? "将此图片追加到下一次创作的参考图" : "将此视频作为下一次创作的参考视频";
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     continueFromVisualResult(task.id, src, type);
@@ -3637,7 +3675,12 @@ function applyVisualTaskSettings(task) {
     if (task.model) state.settings.videoModel = task.model;
     if (params.aspectRatio) state.settings.videoAspectRatio = params.aspectRatio;
     if (params.resolution) state.settings.videoResolution = params.resolution;
-    if (params.duration) state.settings.videoDuration = clampNumber(parseInt(params.duration, 10), 1, 30, state.settings.videoDuration);
+    if (params.duration) {
+      state.settings.videoDuration = params.duration === "自动"
+        ? -1
+        : clampNumber(parseInt(params.duration, 10), 1, 30, state.settings.videoDuration);
+    }
+    if (params.count) state.settings.videoCount = clampNumber(params.count, 1, 8, state.settings.videoCount);
     if (params.style) state.settings.videoStyle = params.style;
     if (params.audio) state.settings.videoAudio = params.audio === "开" || params.audio === true;
   } else {
@@ -3674,15 +3717,14 @@ async function continueFromVisualResult(taskId, src, type) {
     const media = await generatedResultToMedia(src, type, task);
     activeMode = "image";
     activeVisualSessionId = task.sessionId || activeVisualSessionId;
-    draftMedia = createEmptyDraftMedia();
-    syncImageModeFromReferences();
     applyVisualTaskSettings(task);
     if (type === "video") {
+      draftMedia = createEmptyDraftMedia();
       state.settings.visualMode = "video";
       draftMedia.videoReferences = [media];
     } else {
       state.settings.visualMode = "image";
-      draftMedia.imageReferences = [media];
+      draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, media]).slice(0, 8);
       syncImageModeFromReferences();
     }
     saveState();
@@ -3690,7 +3732,7 @@ async function continueFromVisualResult(taskId, src, type) {
     els.promptInput.value = task.prompt || "";
     autoResizePrompt();
     els.promptInput.focus();
-    showToast(type === "video" ? "已将结果加入参考视频" : "已将结果加入参考图");
+    showToast(type === "video" ? "已将结果加入参考视频" : `已加入参考图（${draftMedia.imageReferences.length}/8）`);
   } catch (error) {
     const message = error?.message === "Failed to fetch"
       ? "无法读取该结果，图片地址可能已过期或不允许跨域下载"
@@ -3813,7 +3855,8 @@ function renderModelSummary(profile, modelId, visualMode) {
       ? [
           ["比例", effectiveVideoAspectRatio(modelId)],
           ["清晰度", effectiveVideoResolution(modelId)],
-          ["时长", `${effectiveVideoDuration(modelId)}s`],
+          ["时长", effectiveVideoDuration(modelId) === -1 ? "自动" : `${effectiveVideoDuration(modelId)}s`],
+          ...(isSeedance2Model(modelId) ? [["数量", effectiveVideoCount(modelId)]] : []),
           ["风格", state.settings.videoStyle],
           ["音频", effectiveVideoAudio(modelId) ? "开" : "关"],
         ]
@@ -3848,7 +3891,7 @@ async function handleReferenceFiles(event, kind) {
       if (state.settings.visualMode === "video") {
         draftMedia.videoImages = uniqueMedia([...draftMedia.videoImages, ...items]).slice(0, 6);
       } else {
-        draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, ...items]).slice(0, 6);
+        draftMedia.imageReferences = uniqueMedia([...draftMedia.imageReferences, ...items]).slice(0, 8);
         syncImageModeFromReferences();
       }
     } else if (kind === "video-reference") {
@@ -4695,7 +4738,7 @@ function exportData() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `yhshu-client-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `deep-iamge2-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -5210,6 +5253,7 @@ if (typeof module !== "undefined" && module.exports) {
     effectiveImageAspectRatio,
     effectiveVideoAspectRatio,
     effectiveVideoAudio,
+    effectiveVideoCount,
     effectiveVideoDuration,
     effectiveVideoResolution,
     encodeVideoTaskId,
@@ -5247,6 +5291,9 @@ if (typeof module !== "undefined" && module.exports) {
     resolveGeminiImageRoute,
     resolveChatProtocol,
     shouldStopMissingVideoTaskPolling,
+    videoAspectOptionsForModel,
+    videoDurationOptionsForModel,
+    videoResolutionOptionsForModel,
     videoStatusEndpointForTask,
     videoStatusHeadersForTask,
     setTestSettings(settings) {

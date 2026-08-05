@@ -145,6 +145,26 @@ test("Gemini 2.0 native edit strips the reference data URL prefix", () => {
   assert.deepEqual(body.generationConfig, { responseModalities: ["TEXT", "IMAGE"] });
 });
 
+test("image editing preserves multiple uploaded reference images", () => {
+  const references = ["YWJjZA==", "ZWZnaA=="].map((data, index) => ({
+    name: `reference-${index + 1}.png`,
+    mime: "image/png",
+    size: 4,
+    dataUrl: `data:image/png;base64,${data}`,
+    file: new Blob([data], { type: "image/png" }),
+  }));
+
+  const openai = build("gpt-image-2", {}, references, true);
+  assert.equal(openai.body instanceof FormData, true);
+  assert.equal(openai.body.getAll("image").length, 2);
+
+  const gemini = build("gemini-2.5-flash-image-preview", {}, references, true);
+  const body = JSON.parse(gemini.body);
+  assert.equal(body.contents[0].parts.length, 3);
+  assert.equal(body.contents[0].parts[1].inline_data.data, "YWJjZA==");
+  assert.equal(body.contents[0].parts[2].inline_data.data, "ZWZnaA==");
+});
+
 test("native and chat Gemini responses expose displayable images", () => {
   const nativeBase64 = "a".repeat(240);
   const chatBase64 = "b".repeat(240);

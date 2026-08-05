@@ -1,7 +1,7 @@
 services:
-  yhshu-client:
+  deep-iamge2:
     image: nginx:1.27-alpine
-    container_name: yhshu-client
+    container_name: deep-iamge2
     restart: unless-stopped
     ports:
       - "3001:80"

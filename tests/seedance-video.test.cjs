@@ -14,7 +14,9 @@ global.document = {
 const {
   buildVideoRequest,
   effectiveVideoAspectRatio,
+  effectiveVideoCount,
   effectiveVideoResolution,
+  isSeedance2Model,
   isSeedance2FastModel,
   isSeedance20UnifiedModel,
   normalizeSeedDanceDuration,
@@ -41,16 +43,43 @@ function build(model, overrides = {}) {
   });
 }
 
-test("Seedance 2.0 Fast supports 480p and 720p but repairs 1080p", () => {
-  const request = build("doubao-seedance-2-0-fast-260128", { videoResolution: "720p" });
-  const body = JSON.parse(request.body);
+test("Seedance 2.0 Fast and Mini aliases support only 480p and 720p", () => {
+  [
+    "doubao-seedance-2-0-fast-260128",
+    "doubao-seedance-2-0-mini-260615",
+    "dreamina-seedance-2-0-260128-fast",
+  ].forEach((model) => {
+    const request = build(model, { videoResolution: "480p", videoAspectRatio: "adaptive", videoDuration: -1 });
+    const body = JSON.parse(request.body);
+    assert.equal(isSeedance2FastModel(body.model), true);
+    assert.equal(request.endpoint, "/v1/video/generations");
+    assert.equal(body.metadata.resolution, "480p");
+    assert.equal(body.metadata.ratio, "adaptive");
+    assert.equal(body.metadata.duration, -1);
 
-  assert.equal(isSeedance2FastModel(body.model), true);
-  assert.equal(request.endpoint, "/v1/video/generations");
-  assert.equal(body.metadata.resolution, "720p");
+    const repaired = JSON.parse(build(model, { videoResolution: "4k" }).body);
+    assert.equal(repaired.metadata.resolution, "720p");
+  });
+});
 
-  const repaired = JSON.parse(build("doubao-seedance-2-0-fast-260128", { videoResolution: "1080p" }).body);
-  assert.equal(repaired.metadata.resolution, "720p");
+test("Seedance 2.0 standard aliases support adaptive ratio, automatic duration, and 4K", () => {
+  [
+    "doubao-seedance-2.0",
+    "doubao-seedance-2-0-260128",
+    "dreamina-seedance-2-0-260128",
+    "seedance-2.0",
+  ].forEach((model) => {
+    const body = JSON.parse(build(model, {
+      videoResolution: "4k",
+      videoAspectRatio: "adaptive",
+      videoDuration: -1,
+    }).body);
+    assert.equal(isSeedance2Model(model), true);
+    assert.equal(isSeedance2FastModel(model), false);
+    assert.equal(body.resolution || body.metadata?.resolution, "4k");
+    assert.equal(body.ratio || body.metadata?.ratio, "adaptive");
+    assert.equal(body.metadata?.duration ?? body.duration, -1);
+  });
 });
 
 test("Seedance 2.0 standard preserves supported ratio and resolution", () => {
@@ -89,11 +118,11 @@ test("all Seedance models support 21:9 and repair unsupported persisted paramete
   assert.equal(effectiveVideoAspectRatio(), "16:9");
 });
 
-test("Seedance 2.0 duration is constrained to 5 through 15 seconds", () => {
+test("Seedance 2.0 duration supports automatic mode and 5 through 15 seconds on dated aliases", () => {
   assert.equal(normalizeSeedDanceDuration(2, "doubao-seedance-2-0-260128"), 5);
   assert.equal(normalizeSeedDanceDuration(30, "doubao-seedance-2-0-260128"), 15);
   assert.equal(normalizeSeedDanceDuration(9.6, "doubao-seedance-2-0-260128"), 10);
-  assert.equal(normalizeSeedDanceDuration(-1, "doubao-seedance-2-0-260128"), 5);
+  assert.equal(normalizeSeedDanceDuration(-1, "doubao-seedance-2-0-260128"), -1);
 });
 
 test("doubao-seedance-2.0 uses the NewAPI task protocol on DeepRouter", () => {
@@ -166,4 +195,15 @@ test("DeepRouter Seedance 2.0 keeps automatic duration in metadata", () => {
   assert.equal(body.metadata.duration, -1);
   assert.equal(body.metadata.seconds, -1);
   assert.equal(body.metadata.duration_seconds, -1);
+});
+
+test("Seedance 2.0 generation count supports 1 through 8 without affecting other video models", () => {
+  setTestSettings({ videoModel: "dreamina-seedance-2-0-260128", videoCount: 8 });
+  assert.equal(effectiveVideoCount(), 8);
+
+  setTestSettings({ videoModel: "doubao-seedance-2-0-mini-260615", videoCount: 12 });
+  assert.equal(effectiveVideoCount(), 8);
+
+  setTestSettings({ videoModel: "grok-video-3", videoCount: 8 });
+  assert.equal(effectiveVideoCount(), 1);
 });

@@ -89,7 +89,7 @@ git pull
 docker compose up -d
 ```
 
-Compose 使用官方 `nginx:1.27-alpine` 镜像，并将静态文件以只读方式挂载到容器中。项目只使用站点根路径 `/`，不要部署到 `/client` 或 `/console/client`。
+Compose 服务和容器名称均为 `deep-iamge2`。它使用官方 `nginx:1.27-alpine` 镜像，并将静态文件以只读方式挂载到容器中。项目只使用站点根路径 `/`，不要部署到 `/client` 或 `/console/client`。
 
 ### 部署方式
 
@@ -99,7 +99,7 @@ Compose 使用官方 `nginx:1.27-alpine` 镜像，并将静态文件以只读方
 
 ```bash
 docker run -d \
-  --name deepimage2-video \
+  --name deep-iamge2 \
   --restart unless-stopped \
   -p 3001:80 \
   -v "$PWD/index.html:/usr/share/nginx/html/index.html:ro" \
@@ -369,7 +369,7 @@ git pull
 docker compose up -d
 ```
 
-The Compose service uses the official `nginx:1.27-alpine` image and mounts all static assets read-only. Deploy the application at `/`, not at `/client` or `/console/client`.
+The Compose service and container are both named `deep-iamge2`. It uses the official `nginx:1.27-alpine` image and mounts all static assets read-only. Deploy the application at `/`, not at `/client` or `/console/client`.
 
 ### Deployment options
 
@@ -377,7 +377,7 @@ The Compose service uses the official `nginx:1.27-alpine` image and mounts all s
 
 ```bash
 docker run -d \
-  --name deepimage2-video \
+  --name deep-iamge2 \
   --restart unless-stopped \
   -p 3001:80 \
   -v "$PWD/index.html:/usr/share/nginx/html/index.html:ro" \
