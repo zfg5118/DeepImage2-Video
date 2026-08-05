@@ -56,6 +56,10 @@ test("Seedance 2.0 Fast and Mini aliases support only 480p and 720p", () => {
     assert.equal(body.metadata.resolution, "480p");
     assert.equal(body.metadata.ratio, "adaptive");
     assert.equal(body.metadata.duration, -1);
+    assert.equal(body.seconds, undefined);
+    assert.equal(body.duration_seconds, undefined);
+    assert.equal(body.metadata.seconds, undefined);
+    assert.equal(body.metadata.duration_seconds, undefined);
 
     const repaired = JSON.parse(build(model, { videoResolution: "4k" }).body);
     assert.equal(repaired.metadata.resolution, "720p");
@@ -79,6 +83,12 @@ test("Seedance 2.0 standard aliases support adaptive ratio, automatic duration, 
     assert.equal(body.resolution || body.metadata?.resolution, "4k");
     assert.equal(body.ratio || body.metadata?.ratio, "adaptive");
     assert.equal(body.metadata?.duration ?? body.duration, -1);
+    if (body.metadata) {
+      assert.equal(body.seconds, undefined);
+      assert.equal(body.duration_seconds, undefined);
+      assert.equal(body.metadata.seconds, undefined);
+      assert.equal(body.metadata.duration_seconds, undefined);
+    }
   });
 });
 
@@ -193,8 +203,8 @@ test("DeepRouter Seedance 2.0 keeps automatic duration in metadata", () => {
   assert.equal(body.seconds, undefined);
   assert.equal(body.duration_seconds, undefined);
   assert.equal(body.metadata.duration, -1);
-  assert.equal(body.metadata.seconds, -1);
-  assert.equal(body.metadata.duration_seconds, -1);
+  assert.equal(body.metadata.seconds, undefined);
+  assert.equal(body.metadata.duration_seconds, undefined);
 });
 
 test("Seedance 2.0 generation count supports 1 through 8 without affecting other video models", () => {

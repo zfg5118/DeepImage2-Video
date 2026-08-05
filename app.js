@@ -2907,6 +2907,7 @@ function buildSeedDanceVideoRequest(prompt, profile) {
   const settings = state.settings;
   const modelId = settings.videoModel;
   const duration = normalizeSeedDanceDuration(settings.videoDuration, modelId);
+  const automaticDuration = duration === -1;
   const ratio = effectiveVideoAspectRatio(modelId);
   const resolution = effectiveVideoResolution(modelId);
   const useNewApiTask = usesNewApiSeedance20Task(modelId);
@@ -2927,8 +2928,8 @@ function buildSeedDanceVideoRequest(prompt, profile) {
           ratio,
           resolution,
           duration,
-          seconds: duration,
-          duration_seconds: duration,
+          seconds: automaticDuration ? undefined : duration,
+          duration_seconds: automaticDuration ? undefined : duration,
           watermark: false,
         },
       }
@@ -2945,17 +2946,17 @@ function buildSeedDanceVideoRequest(prompt, profile) {
     : {
         model: modelId,
         prompt,
-        duration,
-        duration_seconds: duration,
-        seconds: String(duration),
+        duration: automaticDuration ? undefined : duration,
+        duration_seconds: automaticDuration ? undefined : duration,
+        seconds: automaticDuration ? undefined : String(duration),
         ratio,
         resolution,
         metadata: {
           ratio,
           resolution,
           duration,
-          seconds: duration,
-          duration_seconds: duration,
+          seconds: automaticDuration ? undefined : duration,
+          duration_seconds: automaticDuration ? undefined : duration,
         },
       };
   const references = buildVideoReferences();
